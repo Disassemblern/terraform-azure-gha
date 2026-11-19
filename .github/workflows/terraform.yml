@@ -1,0 +1,80 @@
+name: terraform
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      destroy:
+        description: Destroy all resources instead of applying
+        type: boolean
+        default: false
+
+concurrency:
+  group: terraform-state
+  cancel-in-progress: false
+
+env:
+  # azurerm provider and backend read these and fetch the GitHub OIDC token themselves.
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  ARM_USE_OIDC: true
+  TF_IN_AUTOMATION: true
+  TF_VERSION: 1.17.2
+
+defaults:
+  run:
+    working-directory: infra
+
+jobs:
+  plan:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - run: terraform fmt -check -recursive
+      - run: terraform init -input=false -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT }}"
+      - run: terraform validate
+      - run: terraform plan -input=false -out=tfplan
+      - name: Post plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          {
+            echo '### Terraform plan'
+            echo '```'
+            terraform show -no-color tfplan | head -c 60000
+            echo '```'
+          } > comment.md
+          cat comment.md >> "$GITHUB_STEP_SUMMARY"
+          gh pr comment "$PR" --body-file comment.md --edit-last --create-if-none
+
+  apply:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - run: terraform init -input=false -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT }}"
+      - run: terraform apply -input=false -auto-approve ${{ inputs.destroy && '-destroy' || '' }}
+      - if: ${{ !inputs.destroy }}
+        run: echo "Website: $(terraform output -raw website_url)" >> "$GITHUB_STEP_SUMMARY"
