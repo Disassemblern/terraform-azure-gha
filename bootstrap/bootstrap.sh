@@ -32,18 +32,24 @@ APP_ID=$(az ad app list --display-name "$APP_NAME" --query '[0].appId' -o tsv)
 SP_ID=$(az ad sp show --id "$APP_ID" --query id -o tsv 2>/dev/null) ||
   SP_ID=$(az ad sp create --id "$APP_ID" --query id -o tsv)
 
+# Subject prefix as GitHub puts it in the token. It pins owner and repo IDs
+# (repo:owner@123/name@456), so a re-created repo with the same name is not trusted.
+SUBJECT=$(gh api "repos/$REPO/actions/oidc/customization/sub" --jq .sub_claim_prefix)
+
 add_federated_credential() { # name subject
-  if az ad app federated-credential list --id "$APP_ID" --query '[].name' -o tsv | grep -qx "$1"; then
+  if az ad app federated-credential list --id "$APP_ID" --query '[].subject' -o tsv | grep -qxF "$2"; then
     return
   fi
+  # Replace a same-named credential with an outdated subject; absent is fine.
+  az ad app federated-credential delete --id "$APP_ID" --federated-credential-id "$1" 2>/dev/null || true
   # JSON via a relative file: az.cmd mangles inline JSON quotes on Windows.
   printf '{"name":"%s","issuer":"https://token.actions.githubusercontent.com","subject":"%s","audiences":["api://AzureADTokenExchange"]}' \
     "$1" "$2" >fic.json
   az ad app federated-credential create --id "$APP_ID" --parameters @fic.json -o none
   rm fic.json
 }
-add_federated_credential gha-pull-request "repo:$REPO:pull_request"
-add_federated_credential gha-production "repo:$REPO:environment:production"
+add_federated_credential gha-pull-request "$SUBJECT:pull_request"
+add_federated_credential gha-production "$SUBJECT:environment:production"
 
 echo "==> Contributor on subscription"
 SCOPE="/subscriptions/$SUB_ID"

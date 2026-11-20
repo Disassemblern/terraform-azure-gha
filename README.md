@@ -18,7 +18,7 @@ flowchart LR
   Apply -. OIDC token .-> Entra
 ```
 
-- **No secrets in CI:** GitHub issues a short-lived OIDC token, and Entra ID exchanges it for an Azure access token. The federated credentials trust only this repo's `pull_request` events and its `production` environment.
+- **No secrets in CI:** GitHub issues a short-lived OIDC token, and Entra ID exchanges it for an Azure access token. The federated credentials trust only this repo's `pull_request` events and its `production` environment. They are pinned to the repo's numeric owner and repo IDs, so a re-created repo with the same name gets no access.
 - **Remote state:** an Azure Storage backend with blob versioning and lease-based locking.
 - **Gated applies:** every push to `main` waits for approval in the `production` environment.
 - **Teardown:** run the workflow manually with `destroy` checked.
