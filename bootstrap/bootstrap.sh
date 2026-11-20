@@ -6,7 +6,7 @@ set -euo pipefail
 export MSYS_NO_PATHCONV=1 # stop Git Bash on Windows from rewriting /subscriptions/... args
 
 REPO="${REPO:-$(gh repo view --json nameWithOwner -q .nameWithOwner)}"
-LOCATION="${LOCATION:-westeurope}"
+LOCATION="${LOCATION:-swedencentral}"
 STATE_RG=rg-tfstate
 APP_NAME="gha-${REPO#*/}"
 
