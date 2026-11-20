@@ -77,4 +77,5 @@ jobs:
       - run: terraform init -input=false -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT }}"
       - run: terraform apply -input=false -auto-approve ${{ inputs.destroy && '-destroy' || '' }}
       - if: ${{ !inputs.destroy }}
-        run: echo "Website: $(terraform output -raw website_url)" >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          echo "Website: $(terraform output -raw website_url)" >> "$GITHUB_STEP_SUMMARY"
