@@ -45,6 +45,7 @@ resource "azurerm_storage_account" "site" {
   account_tier                    = "Standard"
   account_replication_type        = "LRS"
   min_tls_version                 = "TLS1_2"
+  shared_access_key_enabled       = true  # azurerm blob uploads use it, see CKV2_AZURE_40 skip
   allow_nested_items_to_be_public = false # the static website endpoint is public regardless
 
   blob_properties {
