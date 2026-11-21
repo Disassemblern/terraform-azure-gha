@@ -63,7 +63,8 @@ jobs:
           {
             echo '### Terraform plan'
             echo '```'
-            terraform show -no-color tfplan | head -c 60000
+            # Secret masking does not apply to comments; strip subscription/tenant/client GUIDs.
+            terraform show -no-color tfplan | sed -E 's/[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}/<redacted>/g' | head -c 60000
             echo '```'
           } > comment.md
           cat comment.md >> "$GITHUB_STEP_SUMMARY"
