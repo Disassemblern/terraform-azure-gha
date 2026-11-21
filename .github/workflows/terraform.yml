@@ -5,6 +5,8 @@ on:
     branches: [main]
   push:
     branches: [main]
+    # PRs always plan (plan is a required check); apply only when infra can change.
+    paths: [infra/**, .github/workflows/terraform.yml]
   workflow_dispatch:
     inputs:
       destroy:
