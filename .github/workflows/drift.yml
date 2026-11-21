@@ -1,0 +1,65 @@
+name: drift
+
+on:
+  schedule:
+    - cron: "0 6 * * *" # daily 06:00 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: terraform-state
+  cancel-in-progress: false
+
+env:
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  ARM_USE_OIDC: true
+  TF_IN_AUTOMATION: true
+  TF_VERSION: 1.17.2
+
+defaults:
+  run:
+    working-directory: infra
+
+jobs:
+  detect:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - run: terraform init -input=false -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT }}"
+      - name: Plan and report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          # -detailed-exitcode: 0 = no changes, 1 = error, 2 = drift
+          set +e
+          terraform plan -input=false -no-color -detailed-exitcode > plan.txt 2>&1
+          code=$?
+          set -e
+          if [ "$code" = 1 ]; then cat plan.txt; exit 1; fi
+
+          issue=$(gh issue list --state open --search 'in:title "Drift detected"' --json number --jq '.[0].number // empty')
+          if [ "$code" = 2 ]; then
+            {
+              echo "Scheduled plan found changes made outside Terraform: $RUN_URL"
+              echo '```'
+              head -c 60000 plan.txt
+              echo '```'
+            } > body.md
+            cat body.md >> "$GITHUB_STEP_SUMMARY"
+            if [ -n "$issue" ]; then gh issue comment "$issue" -F body.md; else gh issue create -t "Drift detected" -F body.md; fi
+          else
+            echo "No drift." >> "$GITHUB_STEP_SUMMARY"
+            if [ -n "$issue" ]; then gh issue close "$issue" -c "Drift resolved: $RUN_URL"; fi
+          fi
