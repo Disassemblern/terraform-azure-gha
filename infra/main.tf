@@ -30,12 +30,36 @@ resource "azurerm_resource_group" "site" {
 }
 
 resource "azurerm_storage_account" "site" {
+  #checkov:skip=CKV_AZURE_43:Name is interpolated; checkov cannot evaluate it. Result is 14 lowercase alphanumerics.
+  #checkov:skip=CKV_AZURE_59:Public network access is the point: this serves a public website.
+  #checkov:skip=CKV2_AZURE_33:Private endpoint would make the public website unreachable.
+  #checkov:skip=CKV2_AZURE_1:Public, non-sensitive content; a customer-managed key adds Key Vault cost for no benefit.
+  #checkov:skip=CKV_AZURE_206:LRS on purpose; the content is rebuilt from git, geo-replication only adds cost.
+  #checkov:skip=CKV2_AZURE_40:azurerm uploads blobs with Shared Key; Entra-only auth needs a data-plane role.
+  #checkov:skip=CKV_AZURE_33:Queue service is unused.
+
   # Globally unique, stable per subscription.
-  name                     = "stsite${substr(sha1(data.azurerm_client_config.current.subscription_id), 0, 8)}"
-  resource_group_name      = azurerm_resource_group.site.name
-  location                 = azurerm_resource_group.site.location
-  account_tier             = "Standard"
-  account_replication_type = "LRS"
+  name                            = "stsite${substr(sha1(data.azurerm_client_config.current.subscription_id), 0, 8)}"
+  resource_group_name             = azurerm_resource_group.site.name
+  location                        = azurerm_resource_group.site.location
+  account_tier                    = "Standard"
+  account_replication_type        = "LRS"
+  min_tls_version                 = "TLS1_2"
+  shared_access_key_enabled       = true  # azurerm blob uploads use it, see CKV2_AZURE_40 skip
+  allow_nested_items_to_be_public = false # the static website endpoint is public regardless
+
+  blob_properties {
+    delete_retention_policy {
+      days = 7
+    }
+    container_delete_retention_policy {
+      days = 7
+    }
+  }
+
+  sas_policy {
+    expiration_period = "01.00:00:00"
+  }
 }
 
 resource "azurerm_storage_account_static_website" "site" {

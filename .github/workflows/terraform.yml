@@ -5,6 +5,8 @@ on:
     branches: [main]
   push:
     branches: [main]
+    # PRs always plan (plan is a required check); apply only when infra can change.
+    paths: [infra/**, .github/workflows/terraform.yml]
   workflow_dispatch:
     inputs:
       destroy:
@@ -44,6 +46,12 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
       - run: terraform fmt -check -recursive
+      - uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: infra
+          framework: terraform
+          quiet: true
+          compact: true
       - run: terraform init -input=false -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT }}"
       - run: terraform validate
       - run: terraform plan -input=false -out=tfplan
