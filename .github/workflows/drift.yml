@@ -44,7 +44,7 @@ jobs:
         run: |
           # -detailed-exitcode: 0 = no changes, 1 = error, 2 = drift
           set +e
-          terraform plan -input=false -no-color -detailed-exitcode > plan.txt 2>&1
+          terraform plan -input=false -no-color -detailed-exitcode -out=tfplan > plan.txt 2>&1
           code=$?
           set -e
           if [ "$code" = 1 ]; then cat plan.txt; exit 1; fi
@@ -54,7 +54,8 @@ jobs:
             {
               echo "Scheduled plan found changes made outside Terraform: $RUN_URL"
               echo '```'
-              head -c 60000 plan.txt
+              # Plan file only (the raw log has base64 IDs); secret masking does not apply to issues.
+              terraform show -no-color tfplan | sed -E 's/[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}/<redacted>/g' | head -c 60000
               echo '```'
             } > body.md
             cat body.md >> "$GITHUB_STEP_SUMMARY"
