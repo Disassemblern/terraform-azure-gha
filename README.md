@@ -4,23 +4,30 @@
 
 Terraform deploys a static website to Azure Storage. GitHub Actions runs it, using OIDC to authenticate so the repo stores no cloud credentials.
 
+**Live:** https://stsite58c3220a.z1.web.core.windows.net/
+
 ## How it works
 
 ```mermaid
 flowchart LR
-  PR[Pull request] --> Plan[fmt / validate / plan]
+  PR[Pull request] --> Plan[fmt / checkov / validate / plan]
   Plan --> Comment[Plan posted as PR comment]
   PR -->|merge| Main[push to main]
   Main --> Gate{production environment<br/>manual approval}
   Gate --> Apply[terraform apply]
   Apply --> Azure[(Azure: RG + Storage static website)]
+  Cron[Daily schedule] --> Drift[plan -detailed-exitcode]
+  Drift -->|changes found| Issue[Drift detected issue]
   Plan -. OIDC token .-> Entra[Entra ID federated credential]
   Apply -. OIDC token .-> Entra
+  Drift -. OIDC token .-> Entra
 ```
 
-- **No secrets in CI:** GitHub issues a short-lived OIDC token, and Entra ID exchanges it for an Azure access token. The federated credentials trust only this repo's `pull_request` events and its `production` environment. They are pinned to the repo's numeric owner and repo IDs, so a re-created repo with the same name gets no access.
+- **No secrets in CI:** GitHub issues a short-lived OIDC token, and Entra ID exchanges it for an Azure access token. The federated credentials trust only this repo's `pull_request` events, its `production` environment and its `main` branch (used by the drift check). They are pinned to the repo's numeric owner and repo IDs, so a re-created repo with the same name gets no access.
 - **Remote state:** an Azure Storage backend with blob versioning and lease-based locking.
-- **Gated applies:** every push to `main` waits for approval in the `production` environment.
+- **Security scan:** Checkov scans `infra/` on every PR. A failing check blocks the merge. Each skipped check has its reason written next to it in [main.tf](infra/main.tf).
+- **Gated applies:** every push to `main` that changes `infra/` or the workflow waits for approval in the `production` environment.
+- **Drift detection:** a daily plan opens a `Drift detected` issue when Azure no longer matches the code, and closes the issue once they match again.
 - **Teardown:** run the workflow manually with `destroy` checked.
 - **Cost:** about $0. It uses one LRS storage account for the site and one for state.
 
@@ -29,7 +36,8 @@ flowchart LR
 ```
 bootstrap/bootstrap.sh       one-time setup: state storage, OIDC identity, GitHub secrets
 infra/                       Terraform: resource group, storage account, static website, index.html
-.github/workflows/terraform.yml
+.github/workflows/terraform.yml   PR plan + gated apply
+.github/workflows/drift.yml       daily drift check
 ```
 
 ## Reproduce
