@@ -50,6 +50,9 @@ add_federated_credential() { # name subject
 }
 add_federated_credential gha-pull-request "$SUBJECT:pull_request"
 add_federated_credential gha-production "$SUBJECT:environment:production"
+# Scheduled drift check runs on main. Only merged code runs there (main is protected).
+# ponytail: shares the Contributor identity; a separate read-only identity if the repo gains collaborators.
+add_federated_credential gha-main "$SUBJECT:ref:refs/heads/main"
 
 echo "==> Contributor on subscription"
 SCOPE="/subscriptions/$SUB_ID"
